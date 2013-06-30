@@ -23,11 +23,12 @@ const unsigned long debouncePeriod = 50;          // Increase if the switch acts
 const unsigned long blinkOnPeriod = 1000;
 const unsigned long blinkOffPeriod = 1000;
 const unsigned long millisOffset = 0; // Useful for debugging the code executed when millis() overflows;
+const boolean printDebug = false;             // Whether to print debug lines or not
 
   // Define your pins
 const int controlPin = 8;             // Controls whether 120V circuit turns on or not
 const int groundPin = 7;              // This should change to 9 once I use headers, or may use standard GND pin
-const int modePin = 11;               // Toggles between scheduled, constant, and hold mode
+const int modePin = 12;               // Toggles between scheduled, constant, and hold mode
 const int indicatorPin = 13;          // Reflect operating state with on-board led, on = schedule mode
 
 // Enums
@@ -41,7 +42,6 @@ int currentPowerState = LOW;          // Note that we don't have a PowerState en
 
 // the setup routine runs once when you press reset or boot the system
 void setup() {                
-  // initialize the digital pin as an output.
   pinMode(controlPin, OUTPUT);     
   pinMode(groundPin, OUTPUT);
   pinMode(indicatorPin, OUTPUT);  
@@ -56,15 +56,15 @@ void setup() {
 void loop() {
   // Begin ON half of cycle
   if (request_power_state(HIGH)) {
-    Serial.print("Starting On Cycle for ");
-    Serial.print(onPeriod / 1000UL);
-    Serial.println(" seconds");
+    my_print("Starting On Cycle for ", false, false);
+    my_print(onPeriod / 1000UL, false, false);
+    my_print(" seconds", true, false);
   }
   if (run_half_cycle(onPeriod) && currentMode != RUN) {   // false if a mode change ends the cycle prematurely
     if (request_power_state(LOW)) {
-      Serial.print("Starting Off Cycle for ");
-      Serial.print(offPeriod / 1000UL);
-      Serial.println(" seconds");
+      my_print("Starting Off Cycle for ", false, false);
+      my_print(offPeriod / 1000UL, false, false);
+      my_print(" seconds", true, false);
     }
     run_half_cycle(offPeriod);
   }
@@ -76,8 +76,8 @@ boolean request_power_state(int requestedState) {
   int newState;
   boolean requestHonored = false;
 
-  Serial.print("DEBUG: Requested Power State ");
-  Serial.println(requestedState);
+  my_print("DEBUG: Requested Power State ", false, true);
+  my_print(requestedState, true, true);
   // Will need to check whether we are currently in a scheduled ON period before allowing an ON state with RTC
   switch (currentMode) {
     case REPEAT: newState = requestedState; requestHonored = true; break;
@@ -87,12 +87,12 @@ boolean request_power_state(int requestedState) {
   if (newState != currentPowerState) {
     currentPowerState = newState;
     digitalWrite(controlPin, currentPowerState);
-    Serial.print("DEBUG: Power State Changed, Time=");
-    Serial.println(my_millis());
+    my_print("DEBUG: Power State Changed, Time=", false, true);
+    my_print(my_millis(), true, true);
   }
   if (requestHonored) {
-    Serial.print("DEBUG: Request Honored, Time=");
-    Serial.println(my_millis());
+    my_print("DEBUG: Request Honored, Time=", false, true);
+    my_print(my_millis(), true, true);
   }
   return requestHonored;
 }
@@ -103,9 +103,9 @@ boolean run_half_cycle(unsigned long period) {
   unsigned long initialTime = my_millis();
   unsigned long nextPowerStateChange;
   
-  Serial.print("DEBUG: Running Half Cycle for next ");
-  Serial.print(period);
-  Serial.println("ms");
+  my_print("DEBUG: Running Half Cycle for next ", false, true);
+  my_print(period, false, true);
+  my_print("ms", true, true);
   nextPowerStateChange = next_switch_time(initialTime, period);
   while (!time_surpassed(nextPowerStateChange, initialTime)) {
     update_indicator(currentMode != lastSeenMode);    // Update indicator for blinking or mode change
@@ -113,8 +113,8 @@ boolean run_half_cycle(unsigned long period) {
     mode_change_check();              // Check for switch toggling through the modes (returns after debouncing time)
     if (currentMode != lastSeenMode) {
       lastSeenMode = currentMode;
-      Serial.print("DEBUG: Bailing on cycle because mode has changed, Time=");
-      Serial.println(my_millis());
+      my_print("DEBUG: Bailing on cycle because mode has changed, Time=", false, true);
+      my_print(my_millis(), true, true);
       return false;                   // Premature cycle end due to mode change 
     }
   }
@@ -126,8 +126,8 @@ boolean run_half_cycle(unsigned long period) {
 unsigned long next_switch_time(unsigned long currTime, unsigned long holdTime) {
   unsigned long nextSwitch = currTime + holdTime;
 
-  Serial.print("Time when power state is next changed: ");
-  Serial.println(nextSwitch);
+  my_print("Time when power state is next changed: ", false, false);
+  my_print(nextSwitch, true, false);
   return nextSwitch;
 }
 
@@ -153,27 +153,27 @@ void mode_change_check() {
     lastVal = val;
     increment_mode();
     match_indicator_to_mode();        // This will take care of resetting the indicator for the mode change
-    Serial.print("Mode Change: ");
-    Serial.println(mode_to_string());
+    my_print("Mode Change: ", false, false);
+    my_print(mode_to_string(), true, false);
     
     // First wait until pin goes HIGH again. This marks the beginning of the debounce period
-    Serial.print("DEBUG: Switch LOW state detected=");
-    Serial.println(my_millis());
+    my_print("DEBUG: Switch LOW state detected=", false, true);
+    my_print(my_millis(), true, true);
     while (val == LOW) {
       val = digitalRead(modePin);
       lastVal = val;
       update_indicator(false);        // Need to keep blinking in SCHEDULE mode, we've already done the mode change
     }
-    Serial.print("DEBUG: Switch back in HIGH state");
-    Serial.println(my_millis());
+    my_print("DEBUG: Switch back in HIGH state=", false, true);
+    my_print(my_millis(), true, true);
 
     // Initialize debounce
     initialTime = my_millis();
     fullyDebouncedTime = initialTime + debouncePeriod;
-    Serial.print("DEBUG: Initial Debounce Time=");
-    Serial.print(initialTime);
-    Serial.print("    Target Debounce Time=");
-    Serial.println(fullyDebouncedTime);
+    my_print("DEBUG: Initial Debounce Time=", false, true);
+    my_print(initialTime, false, true);
+    my_print("    Target Debounce Time=", false, true);
+    my_print(fullyDebouncedTime, true, true);
     
     // Now wait out the debounce period while still updating a blinking indicator
     while (!time_surpassed(fullyDebouncedTime, initialTime)) {
@@ -184,8 +184,8 @@ void mode_change_check() {
       }
       update_indicator(false);        // Need to keep blinking in SCHEDULE mode, but no mode change allowed in debounce
     }
-    Serial.print("DEBUG: Finished Debounce at ");
-    Serial.println(my_millis());
+    my_print("DEBUG: Finished Debounce at ", false, true);
+    my_print(my_millis(), true, true);
   }
 }
 
@@ -259,5 +259,29 @@ void update_indicator(boolean modeChange) {
 // This exists solely so that I can debug code that deals with overflowing the millis() return value
 unsigned long my_millis() {
   return millis() + millisOffset;
+}
+
+// Debugging-aware print of string to Serial, with optional newline
+void my_print(char *str, boolean nl, boolean debug) {
+  if (!debug || printDebug) {
+    if (nl) {
+      Serial.println(str);
+    } else {
+      Serial.print(str);
+    }
+  }
+}
+
+// Debugging-aware print of unsigned numbers to Serial, with optional newline. 
+// Note that you can't overload a function on unsigned and signed because the compiler can't distinguish which to call.
+// Fortunately I have no negative values to worry about printing.
+void my_print(unsigned long val, boolean nl, boolean debug) {
+  if (!debug || printDebug) {
+    if (nl) {
+      Serial.println(val);
+    } else {
+      Serial.print(val);
+    }
+  }
 }
 
